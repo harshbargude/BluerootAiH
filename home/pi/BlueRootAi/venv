@@ -1,0 +1,3 @@
+The venv directory is typically created automatically when you set up a virtual environment using a tool like `venv` or `virtualenv`. It does not contain any specific files that need to be manually created. Therefore, the contents of the file `/blueroot-ai/blueroot-ai/venv` will be intentionally left blank.
+
+# This file is intentionally left blank.

@@ -1,0 +1,16 @@
+gpio:
+  pump_pin: 17
+  valve_pin: 27
+  relay_active_high: false
+
+adc:
+  bus: 1
+  address: 0x48   # Check with: i2cdetect -y 1
+  vref: 3.3
+  channels:
+    ph: 0
+    tds: 1
+    turbidity: 2
+
+thresholds:
+  tds_high: 450

@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>BlueRootAI Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/static/css/style.css">
+  <style>
+    .dashboard { max-width: 500px; margin: 0 auto; }
+    .header { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+    .header-icon { font-size: 2.2em; }
+    .status { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-left: 6px; }
+    .status.on { background: #2ecc40; }
+    .status.off { background: #b00; }
+    .status.open { background: #2ecc40; }
+    .status.closed { background: #b00; }
+    .sensor-row { display: flex; align-items: center; margin-bottom: 8px; }
+    .sensor-label { width: 100px; font-weight: 500; }
+    .sensor-value { font-family: monospace; font-size: 1.1em; }
+    .controls-row { margin-bottom: 10px; }
+    .controls-row button { min-width: 90px; }
+    @media (max-width: 600px) {
+      .dashboard { max-width: 98vw; }
+      .sensor-label { width: 80px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="dashboard">
+    <div class="header">
+      <span class="header-icon">🌱</span>
+      <h1 style="margin:0;">BlueRootAI</h1>
+    </div>
+    <div class="card">
+      <h3>Controls</h3>
+      <div class="controls-row">
+        <button onclick="setPump(true)">Pump ON</button>
+        <button onclick="setPump(false)">Pump OFF</button>
+        <span id="pump-status" class="status off"></span>
+        <span id="pump-label">OFF</span>
+      </div>
+      <div class="controls-row">
+        <button onclick="setValve(true)">Valve OPEN</button>
+        <button onclick="setValve(false)">Valve CLOSE</button>
+        <span id="valve-status" class="status closed"></span>
+        <span id="valve-label">CLOSED</span>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Sensors</h3>
+      <div class="sensor-row">
+        <span class="sensor-label">pH:</span>
+        <span id="ph" class="sensor-value">...</span>
+      </div>
+      <div class="sensor-row">
+        <span class="sensor-label">TDS (mg/L):</span>
+        <span id="tds" class="sensor-value">...</span>
+      </div>
+      <div class="sensor-row">
+        <span class="sensor-label">Turbidity (NTU):</span>
+        <span id="turb" class="sensor-value">...</span>
+      </div>
+      <div class="sensor-row">
+        <span class="sensor-label">Temperature (°C):</span>
+        <span id="temp" class="sensor-value">...</span>
+      </div>
+      <div id="err" class="err"></div>
+    </div>
+    <footer style="text-align:center;color:#888;margin-top:18px;font-size:0.95em;">&copy; 2025 BlueRootAI</footer>
+  </div>
+<script>
+  async function refresh(){
+    try {
+  const s = await (await fetch('/api/sensors')).json();
+  document.getElementById('ph').textContent = (s.ph !== null && s.ph !== undefined) ? (s.ph + ' pH') : '—';
+  document.getElementById('tds').textContent = (s.tds !== null && s.tds !== undefined) ? (s.tds + ' mg/L') : '—';
+  document.getElementById('turb').textContent = (s.turb !== null && s.turb !== undefined) ? (s.turb + ' NTU') : '—';
+  document.getElementById('temp').textContent = (s.temp !== null && s.temp !== undefined) ? (s.temp + ' °C') : '—';
+  document.getElementById('err').textContent = s.error ? ('Error: ' + s.error) : '';
+      const c = await (await fetch('/api/control/state')).json();
+      // Pump status
+      document.getElementById('pump-label').textContent = c.pump ? 'ON' : 'OFF';
+      document.getElementById('pump-status').className = 'status ' + (c.pump ? 'on' : 'off');
+      // Valve status
+      document.getElementById('valve-label').textContent = c.valve ? 'OPEN' : 'CLOSED';
+      document.getElementById('valve-status').className = 'status ' + (c.valve ? 'open' : 'closed');
+    } catch (e) { console.error(e); }
+  }
+  async function setPump(on){ await fetch('/api/control/pump',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({on})}); refresh(); }
+  async function setValve(on){ await fetch('/api/control/valve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({on})}); refresh(); }
+  refresh(); setInterval(refresh, 2000);
+</script>
+</body>
+</html>

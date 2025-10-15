@@ -1,0 +1,6 @@
+Flask
+gunicorn
+gpiozero
+smbus2
+PyYAML
+python-dotenv

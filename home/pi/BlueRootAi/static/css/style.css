@@ -1,0 +1,4 @@
+body { font-family: system-ui, Arial, sans-serif; margin: 20px; }
+.card { border: 1px solid #ddd; padding: 12px; border-radius: 8px; margin-bottom: 12px; }
+button { margin-right: 6px; padding: 6px 10px; }
+.err { color: #b00; margin-top: 8px; }
