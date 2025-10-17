@@ -24,6 +24,29 @@
       .sensor-label { width: 80px; }
     }
   </style>
+  <script>
+    async function fetchTemperature() {
+      try {
+        const response = await fetch('/api/temperature');
+        const data = await response.json();
+        const tempDisplay = document.getElementById('temperature');
+        
+        if (data.temperature === null) {
+          tempDisplay.textContent = data.error || 'Temperature unavailable';
+        } else {
+          tempDisplay.textContent = `${data.temperature}°C`;
+        }
+      } catch (error) {
+        console.error('Error fetching temperature:', error);
+        document.getElementById('temperature').textContent = 'Error reading temperature';
+      }
+    }
+
+    // Call fetchTemperature every 5 seconds
+    setInterval(fetchTemperature, 5000);
+    // Initial call
+    fetchTemperature();
+  </script>
 </head>
 <body>
   <div class="dashboard">
@@ -48,6 +71,10 @@
     </div>
     <div class="card">
       <h3>Sensors</h3>
+      <div class="sensor-row">
+        <span class="sensor-label">Temperature:</span>
+        <span id="temperature" class="sensor-value">Loading...</span>
+      </div>
       <div class="sensor-row">
         <span class="sensor-label">pH:</span>
         <span id="ph" class="sensor-value">...</span>

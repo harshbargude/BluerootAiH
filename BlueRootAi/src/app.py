@@ -25,6 +25,13 @@ sensor_state = {"ph": None, "tds": None, "turb": None, "temp": None, "error": No
 # Flag to ensure the polling thread is started only once
 _started = False
 
+# Initialize temperature sensor globally
+try:
+    temp_sensor = DS18B20()
+except RuntimeError as e:
+    print(f"Warning: {e}")
+    temp_sensor = None
+
 def load_config():
     # Assuming config.yaml is in a 'config' folder at the project root
     cfg_path = os.path.join(os.path.dirname(__file__), "..", "config", "config.yaml")
@@ -39,6 +46,17 @@ def create_app():
     CORS(app, resources={r"/api/*": {"origins": "*"}})
 
     cfg = load_config()
+
+    @app.route('/api/temperature')
+    def get_temperature():
+        if temp_sensor is None:
+            return jsonify({'error': 'Temperature sensor not available', 'temperature': None})
+        
+        temp = temp_sensor.read_temperature()
+        if temp is None:
+            return jsonify({'error': 'Failed to read temperature', 'temperature': None})
+        
+        return jsonify({'temperature': round(temp, 2)})
 
     # Hardware Initialization
     adc = PCF8591(
