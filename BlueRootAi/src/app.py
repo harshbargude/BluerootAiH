@@ -118,6 +118,19 @@ def create_app():
     def get_sensors():
         return jsonify(sensor_state)
 
+    # Dedicated endpoints for clients needing per-sensor values
+    @app.get('/api/ph')
+    def get_ph():
+        return jsonify({'ph': sensor_state.get('ph')})
+
+    @app.get('/api/tds')
+    def get_tds():
+        return jsonify({'tds': sensor_state.get('tds')})
+
+    @app.get('/api/turbidity')
+    def get_turbidity():
+        return jsonify({'turbidity': sensor_state.get('turb')})
+
     @app.get("/api/control/state")
     def get_state():
         return jsonify({"pump": pump.is_on, "valve": valve.is_on})

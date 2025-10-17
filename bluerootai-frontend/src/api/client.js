@@ -22,7 +22,28 @@ export async function getSensors() {
       // swallow and return original data
     }
   }
-  return data;
+git  // Fallback: if any other sensor missing, fetch dedicated endpoints
+  const result = { ...data };
+  try {
+    if (result.ph === null || typeof result.ph === 'undefined') {
+      const r = await api.get('/api/ph');
+      if (r?.data && typeof r.data.ph === 'number') result.ph = r.data.ph;
+    }
+  } catch (_) {}
+  try {
+    if (result.tds === null || typeof result.tds === 'undefined') {
+      const r = await api.get('/api/tds');
+      if (r?.data && typeof r.data.tds === 'number') result.tds = r.data.tds;
+    }
+  } catch (_) {}
+  try {
+    // backend uses key 'turb' in state; dedicated endpoint returns 'turbidity'
+    if (result.turb === null || typeof result.turb === 'undefined') {
+      const r = await api.get('/api/turbidity');
+      if (r?.data && typeof r.data.turbidity === 'number') result.turb = r.data.turbidity;
+    }
+  } catch (_) {}
+  return result;
 }
 
 export async function getControlState() {
