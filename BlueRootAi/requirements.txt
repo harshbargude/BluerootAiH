@@ -4,3 +4,4 @@ gpiozero
 smbus2
 PyYAML
 python-dotenv
+flask_cors

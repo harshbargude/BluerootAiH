@@ -18,6 +18,9 @@ export default function RealtimeCharts({ pollMs = 2000 }) {
     async function tick() {
       try {
         const s = await getSensors();
+        // Debug: log raw sensor payload
+        // Expect keys: ph, tds, turb, temp, error
+        console.debug('[Sensors API] payload:', s);
         if (cancelled) return;
         const point = {
           ts: Date.now(),
@@ -26,13 +29,16 @@ export default function RealtimeCharts({ pollMs = 2000 }) {
           turb: s.turb ?? null,
           temp: s.temp ?? null,
         };
+        // Debug: log normalized point used by charts
+        console.debug('[Sensors] normalized point:', point);
         setHistory(prev => {
           const next = [...prev, point];
           if (next.length > HISTORY_LIMIT) next.shift();
           return next;
         });
       } catch (_) {
-        // ignore transient errors
+        // Debug: surface fetch errors to console
+        console.error('[Sensors API] fetch failed:', _);
       }
     }
     // immediate fetch then interval

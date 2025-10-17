@@ -11,6 +11,17 @@ export const api = axios.create({
 
 export async function getSensors() {
   const { data } = await api.get('/api/sensors');
+  // Fallback: if temp is null in aggregated endpoint, try dedicated temperature endpoint
+  if (data && (data.temp === null || typeof data.temp === 'undefined')) {
+    try {
+      const t = await api.get('/api/temperature');
+      if (t?.data && typeof t.data.temperature === 'number') {
+        return { ...data, temp: t.data.temperature };
+      }
+    } catch (_) {
+      // swallow and return original data
+    }
+  }
   return data;
 }
 
