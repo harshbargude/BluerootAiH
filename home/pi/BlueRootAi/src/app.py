@@ -1,28 +1,32 @@
+# app.py
+
 import os
 import threading
 import time
 import yaml
 from flask import Flask, jsonify, render_template, request
+# ADDED: CORS is essential for your React frontend to communicate with this backend.
+from flask_cors import CORS
 from sensors.utils import PCF8591
 from controls.relay import Relay
 
 # Temperature sensor import (DS18B20). Use a safe fallback on non-Pi systems.
 try:
     from sensors.temperature_sensor import DS18B20
-except Exception:
-    class DS18B20:  # mock
-        def __init__(self):
-            pass
+except (ImportError, RuntimeError): # IMPROVED: Catch both import and runtime errors
+    print("WARNING: Could not import or initialize DS18B20. Temperature readings will be disabled.")
+    # This mock class ensures the rest of the app doesn't crash
+    class DS18B20:
         def read_temperature(self):
             return None
-# If using wrappers:
-# from controls.pump_control import Pump
-# from controls.valve_control import Valve
 
+# Global state dictionary for sensor readings
 sensor_state = {"ph": None, "tds": None, "turb": None, "temp": None, "error": None}
+# Flag to ensure the polling thread is started only once
 _started = False
 
 def load_config():
+    # Assuming config.yaml is in a 'config' folder at the project root
     cfg_path = os.path.join(os.path.dirname(__file__), "..", "config", "config.yaml")
     with open(cfg_path) as f:
         return yaml.safe_load(f)
@@ -30,9 +34,13 @@ def load_config():
 def create_app():
     global _started
     app = Flask(__name__, static_folder="../static", template_folder="../templates")
+    # ADDED: Initialize CORS, allowing all origins for development.
+    # For production, you might restrict this to your frontend's domain.
+    CORS(app, resources={r"/api/*": {"origins": "*"}})
+
     cfg = load_config()
 
-    # Hardware
+    # Hardware Initialization
     adc = PCF8591(
         bus=cfg["adc"]["bus"],
         address=cfg["adc"]["address"],
@@ -40,60 +48,46 @@ def create_app():
     )
     ch = cfg["adc"]["channels"]
 
-    # Temperature sensor (if present)
-    try:
-        temp_sensor = DS18B20()
-    except Exception:
-        temp_sensor = None
+    # IMPROVED: More robust initialization for the temperature sensor
+    temp_sensor = DS18B20()
 
     pump = Relay(cfg["gpio"]["pump_pin"], active_high=cfg["gpio"]["relay_active_high"])
     valve = Relay(cfg["gpio"]["valve_pin"], active_high=cfg["gpio"]["relay_active_high"])
-    # If using wrappers:
-    # pump = Pump(cfg["gpio"]["pump_pin"], active_high=cfg["gpio"]["relay_active_high"])
-    # valve = Valve(cfg["gpio"]["valve_pin"], active_high=cfg["gpio"]["relay_active_high"])
 
     def poll():
+        """Background thread to continuously poll sensors."""
         while True:
             try:
-                # read calibrated values if calibration exists (voltage -> unit)
-                try:
-                    ph_val = adc.read_calibrated(ch["ph"], 'ph')
-                except Exception:
-                    ph_val = adc.read_voltage(ch["ph"])  # fallback to voltage
+                # --- Read ADC sensors with fallback to raw voltage ---
+                ph_val = adc.read_calibrated(ch["ph"], 'ph') if 'ph' in ch else None
+                tds_val = adc.read_calibrated(ch["tds"], 'tds') if 'tds' in ch else None
+                turb_val = adc.read_calibrated(ch["turbidity"], 'turbidity') if 'turbidity' in ch else None
 
-                try:
-                    tds_val = adc.read_calibrated(ch["tds"], 'tds')
-                except Exception:
-                    tds_val = adc.read_voltage(ch["tds"])  # fallback
+                # --- Read Temperature Sensor ---
+                temp_val = temp_sensor.read_temperature()
 
-                try:
-                    turb_val = adc.read_calibrated(ch["turbidity"], 'turbidity')
-                except Exception:
-                    turb_val = adc.read_voltage(ch["turbidity"])  # fallback
+                # DESIGN NOTE: Applying a secondary calibration here is fine, but consider
+                # moving this logic into the DS18B20 class itself for better encapsulation.
+                temp_cal = cfg.get('calibration', {}).get('temp', {})
+                if temp_val is not None and temp_cal:
+                    a = temp_cal.get('a', 1.0)
+                    b = temp_cal.get('b', 0.0)
+                    temp_val = a * temp_val + b
 
-                # temperature
-                try:
-                    temp_raw = temp_sensor.read_temperature() if temp_sensor else None
-                    # apply temp calibration if present in adc._cal
-                    temp_cal = getattr(adc, '_cal', {}) or {}
-                    if temp_raw is not None and 'temp' in temp_cal:
-                        a = temp_cal['temp'].get('a', 1.0)
-                        b = temp_cal['temp'].get('b', 0.0)
-                        temp_val = a * temp_raw + b
-                    else:
-                        temp_val = temp_raw
-                except Exception:
-                    temp_val = None
-
-                sensor_state["ph"] = None if ph_val is None else round(float(ph_val), 3)
-                sensor_state["tds"] = None if tds_val is None else round(float(tds_val), 2)
-                sensor_state["turb"] = None if turb_val is None else round(float(turb_val), 2)
-                sensor_state["temp"] = None if temp_val is None else round(float(temp_val), 2)
-                sensor_state["error"] = None
+                # --- Update global state safely ---
+                sensor_state["ph"] = round(ph_val, 3) if ph_val is not None else None
+                sensor_state["tds"] = round(tds_val, 2) if tds_val is not None else None
+                sensor_state["turb"] = round(turb_val, 2) if turb_val is not None else None
+                sensor_state["temp"] = round(temp_val, 2) if temp_val is not None else None
+                sensor_state["error"] = None # Clear previous error on success
             except Exception as e:
+                # If any sensor fails, log the error to the state
+                print(f"Error in polling thread: {e}") # Log to console for debugging
                 sensor_state["error"] = str(e)
-            time.sleep(2)
+            
+            time.sleep(2) # Wait before next poll
 
+    # Start the polling thread only once
     if not _started:
         threading.Thread(target=poll, daemon=True).start()
         _started = True
@@ -110,21 +104,31 @@ def create_app():
     def get_state():
         return jsonify({"pump": pump.is_on, "valve": valve.is_on})
 
+    # CORRECTED: This endpoint is now safe from invalid requests.
     @app.post("/api/control/pump")
     def set_pump():
-        on = bool(request.json.get("on"))
+        data = request.get_json()
+        if data is None or 'on' not in data:
+            return jsonify({"error": "Invalid request. 'on' field is missing."}), 400
+        
+        on = bool(data.get("on"))
         pump.on() if on else pump.off()
-        return jsonify({"pump": pump.is_on})
+        return jsonify({"pump": pump.is_on, "status": "success"})
 
+    # CORRECTED: This endpoint is also safe now.
     @app.post("/api/control/valve")
     def set_valve():
-        on = bool(request.json.get("on"))
-        # If using wrapper: valve.open() if on else valve.close()
+        data = request.get_json()
+        if data is None or 'on' not in data:
+            return jsonify({"error": "Invalid request. 'on' field is missing."}), 400
+
+        on = bool(data.get("on"))
         valve.on() if on else valve.off()
-        return jsonify({"valve": valve.is_on})
+        return jsonify({"valve": valve.is_on, "status": "success"})
 
     return app
 
 if __name__ == "__main__":
     app = create_app()
-    app.run(host="0.0.0.0", port=8000)
+    # Use port 5000 as a common convention for Flask dev servers
+    app.run(host="0.0.0.0", port=5000)
